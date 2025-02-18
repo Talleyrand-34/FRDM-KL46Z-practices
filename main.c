@@ -1,6 +1,5 @@
 #include "MKL46Z4.h"
 
-// LED (RG)
 // LED_GREEN = PTD5
 // LED_RED = PTE29
 // SW1 = PTC3
@@ -12,17 +11,12 @@ void delay(void)
     for (i = 0; i < 100000; i++);
 }
 
-void led_green_init(void)
+void leds_init(void)
 {
-    SIM->SCGC5 |= SIM_SCGC5_PORTD_MASK;
+    SIM->SCGC5 |= SIM_SCGC5_PORTD_MASK | SIM_SCGC5_PORTE_MASK;
     PORTD->PCR[5] = PORT_PCR_MUX(1);
-    PTD->PDDR |= (1u << 5);
-}
-
-void led_red_init(void)
-{
-    SIM->SCGC5 |= SIM_SCGC5_PORTE_MASK;
     PORTE->PCR[29] = PORT_PCR_MUX(1);
+    PTD->PDDR |= (1u << 5);
     PTE->PDDR |= (1u << 29);
 }
 
@@ -34,49 +28,42 @@ void switches_init(void)
     PTC->PDDR &= ~((1u << 3) | (1u << 12));
 }
 
-void led_green_toggle(void)
-{
-    PTD->PTOR = (1u << 5);
-}
-
-void led_red_toggle(void)
-{
-    PTE->PTOR = (1u << 29);
-}
-
 int main(void)
 {
     SIM->COPC = 0;
     
-    led_green_init();
-    led_red_init();
+    leds_init();
     switches_init();
     
     int green_state = 0;
     int red_state = 0;
 
     while (1) {
+        // Control do LED verde con SW1
         if (!(PTC->PDIR & (1u << 3))) {
             delay();
             if (!(PTC->PDIR & (1u << 3))) {
                 green_state = !green_state;
                 if (green_state) {
-                    PTD->PCOR = (1u << 5);
+                    PTD->PCOR = (1u << 5);  // Acender LED verde
                 } else {
-                    PTD->PSOR = (1u << 5);
+                    PTD->PSOR = (1u << 5);  // Apagar LED verde
                 }
+                while (!(PTC->PDIR & (1u << 3)));  // Esperar a que se solte o botón
             }
         }
         
+        // Control do LED vermello con SW3
         if (!(PTC->PDIR & (1u << 12))) {
             delay();
             if (!(PTC->PDIR & (1u << 12))) {
                 red_state = !red_state;
                 if (red_state) {
-                    PTE->PCOR = (1u << 29);
+                    PTE->PCOR = (1u << 29);  // Acender LED vermello
                 } else {
-                    PTE->PSOR = (1u << 29);
+                    PTE->PSOR = (1u << 29);  // Apagar LED vermello
                 }
+                while (!(PTC->PDIR & (1u << 12)));  // Esperar a que se solte o botón
             }
         }
     }
