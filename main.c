@@ -28,6 +28,17 @@ void switches_init(void)
     PTC->PDDR &= ~((1u << 3) | (1u << 12));
 }
 
+void update_leds(int sw1_state, int sw3_state)
+{
+    if (sw1_state == 0 && sw3_state == 0) {
+        PTD->PCOR = (1u << 5);  // Turn on green LED
+        PTE->PSOR = (1u << 29); // Turn off red LED
+    } else {
+        PTD->PSOR = (1u << 5);  // Turn off green LED
+        PTE->PCOR = (1u << 29); // Turn on red LED
+    }
+}
+
 int main(void)
 {
     SIM->COPC = 0;
@@ -35,37 +46,30 @@ int main(void)
     leds_init();
     switches_init();
     
-    int green_state = 0;
-    int red_state = 0;
+    int sw1_state = 0;
+    int sw3_state = 0;
 
     while (1) {
-        // Control do LED verde con SW1
+        // Check SW1 state
         if (!(PTC->PDIR & (1u << 3))) {
             delay();
             if (!(PTC->PDIR & (1u << 3))) {
-                green_state = !green_state;
-                if (green_state) {
-                    PTD->PCOR = (1u << 5);  // Acender LED verde
-                } else {
-                    PTD->PSOR = (1u << 5);  // Apagar LED verde
-                }
-                while (!(PTC->PDIR & (1u << 3)));  // Esperar a que se solte o botón
+                sw1_state = !sw1_state;
+                while (!(PTC->PDIR & (1u << 3)));
             }
         }
         
-        // Control do LED vermello con SW3
+        // Check SW3 state
         if (!(PTC->PDIR & (1u << 12))) {
             delay();
             if (!(PTC->PDIR & (1u << 12))) {
-                red_state = !red_state;
-                if (red_state) {
-                    PTE->PCOR = (1u << 29);  // Acender LED vermello
-                } else {
-                    PTE->PSOR = (1u << 29);  // Apagar LED vermello
-                }
-                while (!(PTC->PDIR & (1u << 12)));  // Esperar a que se solte o botón
+                sw3_state = !sw3_state;
+                while (!(PTC->PDIR & (1u << 12)));
             }
         }
+        
+        // Update LEDs based on switch states
+        update_leds(sw1_state, sw3_state);
     }
 
     return 0;
