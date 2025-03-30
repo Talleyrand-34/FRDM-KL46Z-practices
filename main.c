@@ -40,6 +40,8 @@ void pin_setup() {
 
     // Configurar botón izquierdo (PTC12)
     PORTC->PCR[12] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK | PORT_PCR_IRQC(0xA);
+
+    NVIC_EnableIRQ( PORTC_PORTD_IRQn); // Reemplazar con el identificador correcto
 }
 
 void led_green_on() {
@@ -55,6 +57,31 @@ void leds_off() {
     PTE->PSOR = (1 << 29);
 }
 
+volatile int hits = 0, misses = 0;
+volatile int current_led = -1; // -1: ninguno, 0: rojo, 1: verde
+
+void PORTC_IRQHandler() {
+    if ((PORTC->ISFR & (1 << 3))) { // Botón derecho presionado
+        if (current_led == 1) {
+            hits++;
+        } else {
+            misses++;
+        }
+        PORTC->ISFR = (1 << 3); // Limpiar bandera de interrupción del botón derecho
+        lcd_display_dec(hits * 100 + misses); // Actualizar el LCD con aciertos*100+fallos
+    }
+
+    if ((PORTC->ISFR & (1 << 12))) { // Botón izquierdo presionado
+        if (current_led == 0) {
+            hits++;
+        } else {
+            misses++;
+        }
+        PORTC->ISFR = (1 << 12); // Limpiar bandera de interrupción del botón izquierdo
+        lcd_display_dec(hits * 100 + misses); // Actualizar el LCD con aciertos*100+fallos
+    }
+}
+
 int main(void)
 {
     irclk_ini(); // Activar reloj interno para usar con LCD
@@ -67,10 +94,6 @@ int main(void)
     // Secuencia fija de LEDs
     volatile unsigned int sequence = 0x32B14D98;
     unsigned int index = 0;
-    
-    int hits = 0, misses = 0;
-    
-    int current_led = -1; // -1: ninguno, 0: rojo, 1: verde
 
     while (index < 32) {
         leds_off();
@@ -81,30 +104,8 @@ int main(void)
             led_red_on();
             current_led = 0;
         }
-        
+
         delay();
-
-        // Comprobar si se presionó un botón durante este intervalo
-        if ((PORTC->ISFR & (1 << 3))) { // Botón derecho presionado
-            if (current_led == 1) {
-                hits++;
-            } else {
-                misses++;
-            }
-            PORTC->ISFR = (1 << 3); // Limpiar bandera de interrupción del botón derecho
-        }
-
-        if ((PORTC->ISFR & (1 << 12))) { // Botón izquierdo presionado
-            if (current_led == 0) {
-                hits++;
-            } else {
-                misses++;
-            }
-            PORTC->ISFR = (1 << 12); // Limpiar bandera de interrupción del botón izquierdo
-        }
-
-        lcd_display_dec(hits * 100 + misses); // Actualizar el LCD con aciertos*100+fallos
-
         index++;
     }
 
