@@ -1,124 +1,120 @@
 #include "MKL46Z4.h"
 #include "lcd.h"
+#include "components_functions.h" 
 
 // LED (RG)
 // LED_GREEN = PTD5 (pin 98)
 // LED_RED = PTE29 (pin 26)
 
-// SWITCH
+// SWICH
 // RIGHT (SW1) = PTC3 (pin 73)
 // LEFT (SW2) = PTC12 (pin 88)
 
-// Enable IRCLK (Internal Reference Clock)
+// Variables globales para almacenar
+volatile unsigned int hits = 0; // cuenta los aciertos
+volatile unsigned int misses = 0; //cuenta los fallos
+volatile int current_led = 0; // 0: rojo, 1: verde
+
+
+// Enable IRCLK (Internal Reference Clock) Activa el reloj interno de 32 kHz para que pueda ser usado por la pantalla LCD.
+// see Chapter 24 in MCU doc
 void irclk_ini()
 {
-    MCG->C1 = MCG_C1_IRCLKEN(1) | MCG_C1_IREFSTEN(1);
-    MCG->C2 = MCG_C2_IRCS(0); // 0: 32KHZ internal reference clock; 1: 4MHz IRC
+  MCG->C1 = MCG_C1_IRCLKEN(1) | MCG_C1_IREFSTEN(1);
+  MCG->C2 = MCG_C2_IRCS(0); //0 32KHZ internal reference clock; 1= 4MHz irc
 }
 
-void delay(void)
+void delay(void) // Se introduce una pausa en el programa para que los cambios en los LED sean visibles
 {
-    volatile int i;
-    for (i = 0; i < 1000000; i++);
+  volatile int i;
+
+  for (i = 0; i < 1000000; i++);
 }
 
-// Configuración de pines
-void pin_setup() {
-    // Habilitar reloj para los puertos C, D y E
-    SIM->SCGC5 |= SIM_SCGC5_PORTC_MASK | SIM_SCGC5_PORTD_MASK | SIM_SCGC5_PORTE_MASK;
 
-    // Configurar LED verde (PTD5)
-    PORTD->PCR[5] = PORT_PCR_MUX(1);
-    PTD->PDDR |= (1 << 5);
+// Creamos las interrupciones:
+void interrupts() {
+    // Interrupción del SW1
+    PORTC->PCR[3] |= (0xA << 16);
 
-    // Configurar LED rojo (PTE29)
-    PORTE->PCR[29] = PORT_PCR_MUX(1);
-    PTE->PDDR |= (1 << 29);
+    // Interrupcion del SW2
+    PORTC->PCR[12] |= (0xA << 16);
 
-    // Configurar botón derecho (PTC3)
-    PORTC->PCR[3] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK | PORT_PCR_IRQC(0xA);
-
-    // Configurar botón izquierdo (PTC12)
-    PORTC->PCR[12] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK | PORT_PCR_IRQC(0xA);
-
-    NVIC_EnableIRQ( PORTC_PORTD_IRQn); // Reemplazar con el identificador correcto
+    NVIC_EnableIRQ(31); // Habilitar interrupción para el puerto D
 }
 
-void led_green_on() {
-    PTD->PCOR = (1 << 5);
-}
 
-void led_red_on() {
-    PTE->PCOR = (1 << 29);
-}
+// PORTD-Handler Routine
 
-void leds_off() {
-    PTD->PSOR = (1 << 5);
-    PTE->PSOR = (1 << 29);
-}
-
-volatile int hits = 0, misses = 0;
-volatile int current_led = -1; // -1: ninguno, 0: rojo, 1: verde
-
-void PORTC_IRQHandler() {
-    if ((PORTC->ISFR & (1 << 3))) { // Botón derecho presionado
-        if (current_led == 1) {
-            hits++;
-        } else {
-            misses++;
+void PORTDIntHandler(void) {
+    if (PORTC->ISFR & (1 << 3)) { // Si SW1 se presionó
+        if (current_led == 1) { // Si el LED es verde (correcto)
+            hits++; 
+        } else { // Si el LED es rojo (incorrecto)
+            misses++; 
         }
-        PORTC->ISFR = (1 << 3); // Limpiar bandera de interrupción del botón derecho
-        lcd_display_dec(hits * 100 + misses); // Actualizar el LCD con aciertos*100+fallos
+        PORTC->ISFR |= (1 << 3); // Limpiar la bandera de interrupción
     }
 
-    if ((PORTC->ISFR & (1 << 12))) { // Botón izquierdo presionado
-        if (current_led == 0) {
-            hits++;
-        } else {
-            misses++;
+    if (PORTC->ISFR & (1 << 12)) { // Si SW2 se presionó
+        if (current_led == 0) { // Si el LED es rojo (correcto)
+            hits++; 
+        } else { // Si el LED es verde (incorrecto)
+            misses++; 
         }
-        PORTC->ISFR = (1 << 12); // Limpiar bandera de interrupción del botón izquierdo
-        lcd_display_dec(hits * 100 + misses); // Actualizar el LCD con aciertos*100+fallos
+        PORTC->ISFR |= (1 << 12); // Limpiar la bandera de interrupción
     }
+
+    // Actualizar la pantalla LCD con los aciertos y fallos
+    lcd_display_time(hits, misses);
 }
 
-int main(void)
-{
-    irclk_ini(); // Activar reloj interno para usar con LCD
 
-    lcd_ini();
-    lcd_display_dec(0); // Inicializar el LCD con "0000"
+int main(void) {
+    irclk_ini(); // // Habilitar reloj interno
+    lcd_ini(); // Inicializar LCD
+    lcd_display_time(0, 0); // Estado Inicial LCD
+    init_enviroment(); // Inicializa LEDs y botones
+    interrupts(); // Configura y habilita -> Interrupciones
 
-    pin_setup();
-
-    // Secuencia fija de LEDs
+    // 'Random' sequence :-)
     volatile unsigned int sequence = 0x32B14D98;
     unsigned int index = 0;
 
     while (index < 32) {
-        leds_off();
-        if ((sequence >> index) & 1) { // Bit impar: encender LED verde
-            led_green_on();
-            current_led = 1;
-        } else { // Bit par: encender LED rojo
-            led_red_on();
-            current_led = 0;
+        if (sequence & (1 << index)) { // Si el bit es 1. Usamos sequence como un patrón de 32 bits para encender LEDs de manera pseudoaleatoria.
+            led_green_toggle();
+            current_led = 1; // Estado del led: verde
+        } else { // Si el bit es 0
+            led_red_toggle();
+            current_led = 0; // Estado del led: rojo
         }
-
-        delay();
-        index++;
+        
+        delay(); // Para hacer notorio el cambio de LED
+        leds_off(); // Apaga los LEDs
+        index++; // Avanzamos en la secuencia
     }
 
-    // Mostrar resultado final en LCD y parpadear LEDs
+
+//  // Finalización del Juego::
+
+    NVIC_DisableIRQ(31); // Deshabilitar las interrupciones
+
+  
+    // Mostrar 'End' en la pantalla LCD
+    lcd_display_end();
+
+    for(int i = 0; i < 4; i++) { //Para observar fin del juego
+      delay();
+    }
+
     while (1) {
-        lcd_display_dec(hits * 100 + misses); // Mostrar resultado final en el LCD
+        // Resultado
+        lcd_display_time(hits, misses);
         delay();
-        leds_off();
-        delay();
-        led_green_on(); // Parpadeo alternado de LEDs al final del juego
-        led_red_on();
-        delay();
-        leds_off();
+
+        // Limpiar (Parpadeo)
+        lcd_clear();
         delay();
     }
 

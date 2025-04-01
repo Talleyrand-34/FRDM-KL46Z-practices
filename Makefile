@@ -4,7 +4,7 @@ CFLAGS = -I./includes -I./drivers -O2 -Wall -mthumb -mcpu=cortex-m0plus -DCPU_MK
 LDFLAGS = -O2 -Wall -Wextra -mthumb -mcpu=cortex-m0plus --specs=nano.specs -Wl,--gc-sections,-Map=output.map -Tlink.ld
 
 # Source Files
-SRC = main.c startup.c lcd.c
+SRC = main.c startup.c lcd.c components_functions.c
 OBJ = $(SRC:.c=.o)
 
 # Target
