@@ -1,46 +1,68 @@
-TOOLCHAIN=~/toolchain/gcc-arm-none-eabi-4_9-2014q4/bin
-PREFIX=$(TOOLCHAIN)/arm-none-eabi-
+# Toolchain
+CC = arm-none-eabi-gcc
+OBJCOPY = arm-none-eabi-objcopy
+SIZE = arm-none-eabi-size
 
-FREERTOS=freertos
+# Target
+TARGET = main
 
-ARCHFLAGS=-mthumb -mcpu=cortex-m0plus
-CFLAGS=-I. -I./includes/ -I./${FREERTOS}/include \
-	   -I./${FREERTOS}/portable/GCC/ARM_CM0 -O0 -g
-LDFLAGS=--specs=nano.specs -Wl,--gc-sections,-Map,$(TARGET).map,-Tlink.ld
+# Directories
+FREERTOS_DIR = freertos
+FREERTOS_PORT_DIR = $(FREERTOS_DIR)/portable/GCC/ARM_CM0
+FREERTOS_MEMMANG_DIR = $(FREERTOS_DIR)/portable/MemMang
 
-CC=$(PREFIX)gcc
-LD=$(PREFIX)gcc
-OBJCOPY=$(PREFIX)objcopy
-SIZE=$(PREFIX)size
-RM=rm -f
+# Common flags
+COMMON_FLAGS = -mthumb -mcpu=cortex-m0plus -mfloat-abi=soft
+COMMON_FLAGS += -DCPU_MKL46Z128VLH4
 
-TARGET=main
+# Compiler flags
+CFLAGS = -c $(COMMON_FLAGS)
+CFLAGS += -I. -I./includes
+CFLAGS += -I$(FREERTOS_DIR)/include
+CFLAGS += -I$(FREERTOS_PORT_DIR)
+CFLAGS += -O0 -g -Wall
+CFLAGS += -ffunction-sections -fdata-sections
 
-SRC=main.c startup.c ${FREERTOS}/list.c ${FREERTOS}/queue.c \
-	${FREERTOS}/tasks.c ${FREERTOS}/portable/MemMang/heap_2.c \
-	${FREERTOS}/portable/GCC/ARM_CM0/port.c
-OBJ=$(patsubst %.c, %.o, $(SRC))
+# Linker flags
+LDFLAGS = $(COMMON_FLAGS)
+LDFLAGS += --specs=nano.specs
+LDFLAGS += -Wl,--gc-sections,-Map,$(TARGET).map,-Tlink.ld
+LDFLAGS += -lc -lm
 
-all: build size
-build: elf srec bin
-elf: $(TARGET).elf
-srec: $(TARGET).srec
-bin: $(TARGET).bin
+# Source files
+SRCS = main.c
+SRCS += startup.c
+SRCS += lcd.c
+SRCS += $(FREERTOS_DIR)/list.c
+SRCS += $(FREERTOS_DIR)/queue.c
+SRCS += $(FREERTOS_DIR)/tasks.c
+SRCS += $(FREERTOS_MEMMANG_DIR)/heap_2.c
+SRCS += $(FREERTOS_PORT_DIR)/port.c
 
-clean:
-	$(RM) $(TARGET).srec $(TARGET).elf $(TARGET).bin $(TARGET).map $(OBJ)
+# Object files
+OBJS = $(SRCS:.c=.o)
 
+# Default target
+all: $(TARGET).elf 
+	@echo "Build complete!"
+
+# Link
+$(TARGET).elf: $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^
+	$(SIZE) $@
+
+
+# Compile C files
 %.o: %.c
-	$(CC) -c $(ARCHFLAGS) $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) -o $@ $<
 
-$(TARGET).elf: $(OBJ)
-	$(LD) $(LDFLAGS) -o $@ $(OBJ)
+# Clean
+clean:
+	rm -f $(OBJS)
+	rm -f $(TARGET).elf $(TARGET).map 
 
-%.srec: %.elf
-	$(OBJCOPY) -O srec $< $@
+flash: $(TARGET).elf
+	openocd -f openocd.cfg -c "program $(TARGET).elf verify reset exit"
+# Phony targets
+.PHONY: all clean
 
-%.bin: %.elf
-	$(OBJCOPY) -O binary $< $@
-
-size:
-	$(SIZE) $(TARGET).elf
