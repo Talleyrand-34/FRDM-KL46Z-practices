@@ -1,19 +1,44 @@
+########################################
+# Toolchain y flags
+########################################
+CC      = arm-none-eabi-gcc
+OBJCOPY = arm-none-eabi-objcopy
 
-.PHONY: compile run
+CFLAGS  = -Wall -mthumb -mcpu=cortex-m0plus
+CFLAGS += -ffunction-sections -fdata-sections
+CFLAGS += -O2
 
-compile:
-	arm-none-eabi-gcc -I ./includes -O2 -Wall -mthumb -mcpu=cortex-m0plus -c -o startup.o startup.c
-	arm-none-eabi-gcc -I ./includes -O2 -Wall -mthumb -mcpu=cortex-m0plus -c -o main.o main.c
-	arm-none-eabi-gcc -I ./includes -O2 -Wall -mthumb -mcpu=cortex-m0plus --specs=nano.specs -Wl,--gc-sections,-Map,main.map,-Tlink.ld main.o startup.o -o main.elf
+CPPFLAGS = -I ./includes -DCPU_MKL46Z256VLL4
+LDFLAGS  = --specs=nano.specs -Wl,--gc-sections,-Map=main.map,-Tlink.ld
+LDLIBS   = -lm
 
+########################################
+# Ficheros
+########################################
+SRCS = main.c startup.c $(wildcard drivers/*.c)
+OBJS = $(SRCS:.c=.o)
 
-compile-dbg:
-	arm-none-eabi-gcc -I ./includes -O0 -g3 -Wall -mthumb -mcpu=cortex-m0plus -c -o startup.o startup.c
-	arm-none-eabi-gcc -I ./includes -O0 -g3 -Wall -mthumb -mcpu=cortex-m0plus -c -o main.o main.c
-	arm-none-eabi-gcc -I ./includes -O0 -g -Wall -mthumb -mcpu=cortex-m0plus --specs=nano.specs -Wl,--gc-sections,-Map,main.map,-Tlink.ld main.o startup.o -o main.elf
+TARGET_ELF = main.elf
+TARGET_BIN = main.bin
 
-run:
-	openocd -f openocd.cfg -c "program main.elf verify reset exit"
+########################################
+# Reglas
+########################################
+.PHONY: all flash clean
 
-debug:
-	gdb-multiarch -ex "target extended-remote localhost:3333" main.elf
+all: $(TARGET_BIN)
+
+flash: $(TARGET_ELF)
+	openocd -f openocd.cfg -c "program $(TARGET_ELF) verify reset exit"
+
+$(TARGET_ELF): $(OBJS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@
+
+%.o: %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(TARGET_BIN): $(TARGET_ELF)
+	$(OBJCOPY) -O binary $< $@
+
+clean:
+	rm -f $(OBJS) $(TARGET_ELF) $(TARGET_BIN) *.map
